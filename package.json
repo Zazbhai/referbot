@@ -1,0 +1,31 @@
+{
+  "name": "referbot",
+  "version": "1.0.0",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "keywords": [
+    "telegram",
+    "referral",
+    "bot",
+    "nodejs"
+  ],
+  "author": "Antigravity",
+  "license": "ISC",
+  "description": "A modern Telegram Referral Bot with built-in Admin Panel",
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "express": "^4.21.2",
+    "mongoose": "^8.12.1",
+    "dotenv": "^16.4.7",
+    "cors": "^2.8.5",
+    "node-fetch": "^2.7.0",
+    "telegraf-session-local": "^2.1.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.9",
+    "concurrently": "^9.1.2"
+  }
+}
