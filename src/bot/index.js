@@ -323,7 +323,8 @@ bot.action('back_to_main', async (ctx) => {
 
 bot.action(/^verify_join(_.+)?$/, async (ctx) => {
     const payload = ctx.match[1] ? ctx.match[1].substring(1) : null;
-    const joined = await checkMembership(ctx, ctx.state.user);
+    const user = ctx.state.user;
+    const joined = await checkMembership(ctx, user);
     
     if (!joined) {
         return ctx.answerCbQuery("❌ You haven't joined all channels yet!", { show_alert: true });
