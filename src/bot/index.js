@@ -109,6 +109,34 @@ const animateSpin = async (ctx) => {
     }
 };
 
+// Helper: Handle Referral Logic
+const handleReferral = async (ctx, user, payload) => {
+    if (!payload || user.referredBy || payload == user.telegramId) return;
+
+    // Only count as referral if the user is "new" (joined in the last 24 hours)
+    // This prevents old users from being counted as a referral later
+    const isNewUser = (new Date() - user.createdAt) < 86400000; 
+    if (!isNewUser) return;
+
+    const referrerId = parseInt(payload);
+    if (isNaN(referrerId)) return;
+
+    const referrer = await User.findOne({ telegramId: referrerId });
+    if (referrer) {
+        user.referredBy = referrerId;
+        await user.save();
+        
+        referrer.referralsCount += 1;
+        const settings = await Settings.findOne() || await Settings.create({});
+        referrer.points += (settings.referralBonusPoints || 10);
+        await referrer.save();
+        
+        try {
+            await ctx.telegram.sendMessage(referrerId, `🎉 *New Referral!* \n\n${ctx.from.first_name} joined using your link. You earned ${settings.referralBonusPoints || 10} points!`, { parse_mode: 'Markdown' });
+        } catch (e) {}
+    }
+};
+
 // Helper for dynamic menus
 const getUserMenu = (user, botUsername) => {
     const refLink = `https://t.me/${botUsername}?start=${user.telegramId}`;
@@ -144,24 +172,8 @@ bot.start(async (ctx) => {
         );
     }
     
-    if (payload && !user.referredBy && payload != user.telegramId && (new Date() - user.createdAt) < 300000) {
-        const referrerId = parseInt(payload);
-        const referrer = await User.findOne({ telegramId: referrerId });
-        
-        if (referrer) {
-            user.referredBy = referrerId;
-            await user.save();
-            
-            referrer.referralsCount += 1;
-            const settings = await Settings.findOne() || await Settings.create({});
-            referrer.points += settings.referralBonusPoints;
-            await referrer.save();
-            
-            try {
-                await bot.telegram.sendMessage(referrerId, `🎉 *New Referral!* \n\n${ctx.from.first_name} joined using your link. You earned ${settings.referralBonusPoints} points!`, { parse_mode: 'Markdown' });
-            } catch (e) {}
-        }
-    }
+    await handleReferral(ctx, user, payload);
+
 
     const { text, markup } = getUserMenu(user, ctx.botInfo.username);
     ctx.replyWithMarkdown(text, markup);
@@ -320,9 +332,9 @@ bot.action(/^verify_join(_.+)?$/, async (ctx) => {
     await ctx.answerCbQuery("✅ Success! Welcome to the bot.").catch(() => {});
     ctx.deleteMessage().catch(() => {});
     
-    // Trigger start logic again with payload
-    ctx.payload = payload;
-    const user = ctx.state.user;
+    // Process referral if any
+    await handleReferral(ctx, user, payload);
+    
     const botInfo = await ctx.telegram.getMe();
     
     const { text, markup } = getUserMenu(user, botInfo.username);
