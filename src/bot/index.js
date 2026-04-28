@@ -61,21 +61,29 @@ bot.use(async (ctx, next) => {
     }
 });
 
-// Helper: Check if user joined all channels
-const checkMembership = async (ctx, user) => {
+// Helper: Get list of channels user has NOT joined
+const getUnjoinedChannels = async (ctx, user) => {
     const settings = await Settings.findOne();
-    if (!settings || !settings.mandatoryChannels || settings.mandatoryChannels.length === 0) return true;
+    if (!settings || !settings.mandatoryChannels || settings.mandatoryChannels.length === 0) return [];
     
+    const unjoined = [];
     for (const channel of settings.mandatoryChannels) {
         try {
             const member = await ctx.telegram.getChatMember(channel.chatId, user.telegramId);
             const statuses = ['member', 'administrator', 'creator'];
-            if (!statuses.includes(member.status)) return false;
+            if (!statuses.includes(member.status)) {
+                unjoined.push(channel);
+            }
         } catch (e) {
-            console.error(`Error checking membership for ${channel.name}:`, e.message);
+            unjoined.push(channel);
         }
     }
-    return true;
+    return unjoined;
+};
+
+const checkMembership = async (ctx, user) => {
+    const unjoined = await getUnjoinedChannels(ctx, user);
+    return unjoined.length === 0;
 };
 
 // Helper: Sleep
@@ -160,10 +168,9 @@ bot.start(async (ctx) => {
     const user = ctx.state.user;
     
     // Check membership first
-    const joined = await checkMembership(ctx, user);
-    if (!joined) {
-        const settings = await Settings.findOne();
-        const buttons = settings.mandatoryChannels.map(c => [Markup.button.url(`📢 Join ${c.name}`, c.link)]);
+    const unjoined = await getUnjoinedChannels(ctx, user);
+    if (unjoined.length > 0) {
+        const buttons = unjoined.map(c => [Markup.button.url(`📢 Join ${c.name}`, c.link)]);
         buttons.push([Markup.button.callback('✅ I have Joined', `verify_join${payload ? '_' + payload : ''}`)]);
         
         return ctx.replyWithMarkdown(
@@ -324,10 +331,20 @@ bot.action('back_to_main', async (ctx) => {
 bot.action(/^verify_join(_.+)?$/, async (ctx) => {
     const payload = ctx.match[1] ? ctx.match[1].substring(1) : null;
     const user = ctx.state.user;
-    const joined = await checkMembership(ctx, user);
     
-    if (!joined) {
-        return ctx.answerCbQuery("❌ You haven't joined all channels yet!", { show_alert: true });
+    const unjoined = await getUnjoinedChannels(ctx, user);
+    
+    if (unjoined.length > 0) {
+        await ctx.answerCbQuery("❌ You haven't joined all channels yet!", { show_alert: true });
+        
+        // Update message to show only remaining channels
+        const buttons = unjoined.map(c => [Markup.button.url(`📢 Join ${c.name}`, c.link)]);
+        buttons.push([Markup.button.callback('✅ I have Joined', `verify_join${payload ? '_' + payload : ''}`)]);
+        
+        return ctx.editMessageText(
+            `📢 *Wait! Join our channels first.*\n\nTo use this bot and earn rewards, you must be a member of our channels below.`,
+            { parse_mode: 'Markdown', ...Markup.inlineKeyboard(buttons) }
+        ).catch(() => {});
     }
     
     await ctx.answerCbQuery("✅ Success! Welcome to the bot.").catch(() => {});
